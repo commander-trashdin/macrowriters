@@ -53,7 +53,7 @@ Examples include pattern matching with a `match` macro or parallelism approaches
 
 However, this is mostly theoretical, as there aren't many significantly distinct control-flow expressions. Ideally, a language should already include all the known ones. But, since humanity's knowledge grows, a truly self-modifying language **must** have a way to create new control flow expressions, just in case we discover something new.
 
-*(Just don't think you're discovering new ones weekly because you can't be bothered to write an extra `if`.)*
+*(Just don't think you're discovering new ones on a weekly basis because you can't be bothered to write an extra `if`.)*
 
 ### 1.3 DSL for Syntax Transformations
 
@@ -61,9 +61,9 @@ Different syntaxes for representing common data are inevitable. For instance, JS
 
 Two options:
 
-1. **Reader Macros:** Create a data structure at the read stage. You receive a stream of characters, which you can use however you want. This allows you to create a new "literal" syntax for anything. Handy, but it always creates a literal, i.e., an immutable value.
+1. **Reader Macros:** Create a data structure at the read stage. You receive a stream of characters, which you can use however you want. This allows you to create a new "literal" syntax for anything. Handy, but it always creates a literal, i.e., an immutable value -- keep that in mind.
    
-2. **Regular Functions:** Use a regular function with a string containing the data. If you need full compile-time evaluation, you can assign it to an `eval-when (:compile)` variable.
+2. **Regular Functions:** Use a regular function with a string containing the data. If you need full compile-time evaluation, you can assign it to an `eval-when (:compile)` variable. If you want that inside a function, you will have to use a thing from 1.4.
 
 ### 1.4 A Special Case
 
@@ -73,21 +73,22 @@ This section is dedicated to a specific type of macro, which we'll discuss below
 
 ### 2.1 Managing Resources
 
-This is the famous "`with-` style macros" situation. The problem is well-known: you want to open a file, do your thing, and close the file—even if something goes wrong.
+This one is rather famous, usually referred to as "`with-` style macros". 
+The problem of managing resources is a well-known one. You want to open a file, do your thing, close the file. You also want to close the file if something goes wrong, no matter what. Thine file shall be closed, lest vile little computer goblins invade its sacred inner temple and pilfer thy precious data.
+Some languages (you know which ones) integrated that in their memory management model. They have system that (wait, you actually don't know which languages I'm talking about??? Cmon..) perform cleanups at certain fixed points, and this is also where the streams are closed, last goodbyes are said. Usually that happens (okay, fine, the languages are Rust and C++, obviously duh) after some scope is closed.
 
-Some languages (you know which ones) handle this with their memory management model. But in languages with non-deterministic memory management, you have to manage it explicitly. 
+However, these mechanisms are absent in languages with non-deterministic memory management models. While there are ways to hide them under the hood, such as in Haskell, it is rarely used (in Haskell it only works because of how rigid the control flow there is, so in classical Haskell the compiler always knows what and when to do best. They still need explicit functions for opening/closing files if they want to use Control.Monad or such).
 
-Two well-known explicit methods are `defer` and `with-`. Since you can't realistically write a `defer` macro in CL, we'll stick with `with-`. 
+Two well known explicit ways are `defer` and `with-`. The former makes you specify _what_ should happen, and the latter makes you specify what we are _dealing_ with. You cannot realisitcally write a `defer` macro in CL (or Scheme, or even Racket) without rewriting _a lot_ of syntax, so we'll stick with `with-`. 
 
-In a perfect world, you'd have deterministic mechanisms for cleaning up resources immediately after a scope ends. In the real world, you write a `with-` macro, which typically expands into `unwind-protect`.
+In a perfect world, you would have access to deterministic mechanisms, that would allow you to say "this thing here only exists inside the scope, after which it should be cleaned immediately, here's a custom cleanup mechanism". Or maybe something else, I'm not smart enought to predict the future.
+In real world, you just write a `with-` macro, that (usually) expands into `unwind-protect`.
 
 ### 2.2 Modification Macros
 
-This type of macro works around CL's all-is-reference copy semantics. While I’m not a fan, it's there for a reason. Use it, but remember that `setf` in many codebases (and in the standard) doesn't do any value transformations by default—it simply calls the setter.
+This is a macro system that creates a workaround for CL all-is-reference copy semantics. I am not a fan of that semantics (which is why this is in 2, not 1), but that system is there for a reason (some things are impossible otherwise, and they should be possible), so use it. Keep in mind that in many codebases as well as in the standard `setf` doesn't do any value transformations on it's own and simple calls the setter (which then can do things if you _really_ want that). That is probably a good status-quo state of things and you don't want to break it. 
 
-A specific case is list modification macros. You can't create a function analogous to `push` and `pop` for plain CL lists. Therefore, you're forced to use macros, and if you need a custom one, you'll have to write it too. The design of those lists is terrible, but unavoidable.
-
-This also applies to section 3.4.
+A specific case is list modification macros. You can't create a function analogous to `push` and `pop` for plain CL lists. Therefore, you're forced to use macros, and if you need a custom one, you'll have to write it too. The design of those lists is really horrible, but also it is there, so this is unavoidable. This also applies to section 3.4.
 
 Another similar case is the "generalized reference" concept, sometimes implemented via `symbol-macrolet`. Two things to consider:
 
@@ -148,7 +149,8 @@ Now, a rewrite that avoids code generation:
  (apply op #'>= number more-numbers))
 ```
 
-This version is slightly longer but much clearer and easier to extend. Any optimization concerns should be addressed to the compiler developers (this is pretty easy to optimize).
+This version is _slightly_ longer, but also hides no details about what is going on and can be extended in a different file easily. Any optimisation concerns should go to the compiler devs (but also this is rather trivially optimisable).
+
 
 ## 3. When You Really Shouldn't Write Macros
 
@@ -160,11 +162,11 @@ No. Just no.
 
 …Okay, fine, here's why:
 
-I've seen far too many looping macros (we're talking double digits here). The CL standard includes at least four, some doing the same thing as others but worse. That's just insane.
+I've seen far too many looping macros (we're talking double digits here and I never even looked for them specfically). The CL standard includes at least four, some doing the same thing as others but worse. That's just insane.
 
-Here's the deal: there's really only one loop—the infinite loop with custom breaks, or the `tagbody` form with tags. Everything else is a variation of that. So what's the problem? Once you write a looping macro, it becomes almost impossible for the compiler, other people, or
+Here's the deal: there's really only one loop — the infinite loop with custom breaks, or the `tagbody` form with tags. Everything else is a variation of that. So what's the problem? Once you write a looping macro, it becomes almost impossible for the compiler, other people, or
 
- future you to figure out what's going on. Sometimes your loop is simple, but other times, it's a mess of nested loops, returns, and who knows what else.
+future you to figure out what's going on. Sometimes your loop is simple, but other times it is more complex (and even way more complex), and might have a loop inside, might have a couple...Does it return? In CL it sure does. What does it return? Only Machine God knows.
 
 There's a much safer and more readable alternative—the iterator protocol. A great example is Rust's standard iterators. They provide a uniform polymorphic interface for anything you might want to iterate over. If you have something new, you can extend it and have your own iterator that works well with existing ones.
 
@@ -185,7 +187,7 @@ There's a much safer and more readable alternative—the iterator protocol. A gr
   ...)
 ```
 
-Why not make a macro to simplify it?"
+Why don't I just make a macro that is basically `(bar a b c)`, and insert it, that would be easier"
 
 If I need to explain why this is a bad idea, you probably shouldn't be writing code at all.
 
@@ -200,9 +202,9 @@ Sometimes, you might want to perform pre-calculations at compile time or create 
 
 This is ... not great. You're changing the semantics from a function to a macro, making it hard to map/reduce that thing. Error signaling is also out of the question since the macro disappears at runtime. There are other problems, like the lack of strict evaluation rules, which means you have to implement them yourself using `once-only` and gensyms.
 
-Common Lisp has a mechanism for this: `compiler-macros`. This is what you should use in this scenario. You can think of this as section 1.4. 
+Common Lisp has a mechanism for this: `compiler-macros`. This is what you should use in this scenario. This is what section 1.4 is for. 
 
-While compiler-macros still require manual evaluation, they at least retain function semantics.
+To be fair, they still force you to do manual evaluation properly, but at least you retain the function semantics.
 
 ### 3.4 Local Macros
 
